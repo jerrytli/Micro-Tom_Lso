@@ -30,13 +30,12 @@ plot(pressure)
 library(ggplot2)
 library(dplyr)
 library(tidyr)
-library(scales)  # For breaks and labels
 
 # Generate a dummy dataset
 set.seed(123)  # for reproducibility
 indices <- paste0("Index", sprintf("%03d", 1:20))
-group_a <- abs(rnorm(20, mean = 10000, sd = 3000))  # Assume these are raw read values for Group A
-group_b <- abs(rnorm(20, mean = 10000, sd = 3000))  # Assume these are raw read values for Group B
+group_a <- abs(rnorm(20, mean = 10000, sd = 3000))  # raw read values for Group A
+group_b <- abs(rnorm(20, mean = 10000, sd = 3000))  # raw read values for Group B
 log2fc <- log2(group_a/group_b)  # Log2 Fold Change
 type <- sample(c("up", "down"), 20, replace = TRUE)  # 'up' or 'down' type
 
@@ -48,37 +47,42 @@ data <- data.frame(
   Type = type
 )
 
+# Determine the radius for the outer circle where the bubbles will be placed
+max_raw_value <- max(c(data$Group_A, data$Group_B), na.rm = TRUE)
+bubble_radius <- max_raw_value * 1.2  # Bubble radius is set outside the radial plot
+
+# Calculate angle for the text labels
+data$angle <- (as.numeric(data$Index) - 1) / length(levels(data$Index)) * 360
+data$angle <- ifelse(data$angle > 180, data$angle - 180, data$angle)
+
 # Reshape data to long format using pivot_longer
-data_long <- data %>% 
+data_long <- data %>%
   pivot_longer(cols = c(Group_A, Group_B), names_to = "Group", values_to = "Value")
 
-# Find range for axis breaks
-value_range <- range(data_long$Value, na.rm = TRUE)
-breaks_range <- pretty(c(0, value_range[2]), n = 5)  # Adjust 'n' to increase/decrease number of breaks
-
-# Base plot
-p <- ggplot(data_long, aes(x = Index, y = Value, group = Group, fill = Group)) +
-  geom_polygon(alpha = 0.5) +
+# Create the base plot
+p <- ggplot(data_long, aes(x = Index, y = Value, group = Group)) +
+  geom_polygon(aes(fill = Group), color = "grey50", size = 0.2, alpha = 0.5) +
   coord_polar() +
   scale_fill_manual(values = c("Group_A" = "blue", "Group_B" = "red")) +
-  theme_void() +
-  theme(legend.position = "none")
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 0, hjust = 1, color = "black", size = 5),
+    legend.position = "none"
+  ) +
+  scale_y_continuous(limits = c(0, max_raw_value))  # Set limits for the radial plot
 
-# Bubbles for Log2FC
-p <- p + geom_point(data = data, aes(x = Index, y = Log2FC, size = abs(Log2FC), color = Type), alpha = 0.7, inherit.aes = FALSE) +
-  scale_size_area(max_size = 10) +
-  scale_color_manual(values = c("up" = "green", "down" = "purple")) +
-  guides(size = FALSE, color = FALSE)  # Hide the legends
+# Extend the limits of the y-axis to include the bubbles
+p <- p + scale_y_continuous(breaks = seq(0, max_raw_value, by = 2000), limits = c(0, bubble_radius * 1.1))
 
-# Text labels for Log2FC
-p <- p + geom_text(data = data, aes(x = Index, y = Log2FC, label = sprintf("%.2f", Log2FC)), color = "black", vjust = -1, inherit.aes = FALSE)
+# Add the points for Log2FC
+# They are placed just outside the range of the plot
+p <- p + geom_point(data = data, aes(x = Index, y = rep(bubble_radius, nrow(data)), size = abs(Log2FC), color = Type), alpha = 0.7, inherit.aes = FALSE) +
+  scale_size_continuous(range = c(3, 10)) +
+  scale_color_manual(values = c("up" = "red", "down" = "blue")) +
+  guides(size = guide_legend("Log2FC"), color = guide_legend("Type"))
 
-# Adjust radial grid lines and labels
-p <- p + theme(panel.grid.major.x = element_blank(),
-               panel.grid.minor.x = element_blank(),
-               panel.grid.major.y = element_line(color = "grey", size = 0.5),
-               panel.grid.minor.y = element_blank()) +
-  scale_y_continuous(breaks = breaks_range, labels = scales::comma)  # Use comma for thousands
+# Add text labels for Log2FC, placed outside the bubbles
+p <- p + geom_text(data = data, aes(x = Index, y = bubble_radius * 1.08, label = sprintf("%.2f", Log2FC), angle = -angle), vjust = 0.5, color = "black", size = 2.5, inherit.aes = FALSE)
 
 # Print the plot
 print(p)
@@ -87,5 +91,43 @@ ggsave("output/radial_plot.pdf")
 
 ```
 
+```{r}
+library(ggplot2)
+library(dplyr)
 
+# Assuming data is already loaded into 'data'
+# If not, you can create a sample 'data' data frame as follows:
+set.seed(123)  # for reproducibility
+compound <- paste0("Compound", sprintf("%03d", 1:20))
+log2fc <- rnorm(20, mean = 0, sd = 1)  # Log2 Fold Change
+type <- ifelse(log2fc > 0, "up", "down")  # 'up' for positive, 'down' for negative
+
+data <- data.frame(
+  Compound = compound,
+  Log2FC = log2fc,
+  Type = type
+)
+
+# Create the bar plot
+p <- ggplot(data, aes(x = Compound, y = Log2FC, fill = Type)) +
+  geom_bar(stat = "identity", position = "identity") +
+  scale_fill_manual(values = c("up" = "red", "down" = "blue")) +
+  theme_minimal() +
+   theme(
+    panel.grid.major = element_blank(),  # Remove major grid lines
+    panel.grid.minor = element_blank(),  # Remove minor grid lines
+    panel.background = element_blank(),  # Remove panel background
+    axis.line = element_line(colour = "black"))+
+  labs(
+    x = "Compound",
+    y = "Log2FC",
+    fill = "Type"
+  ) +
+  coord_flip()  # Flip coordinates to make it horizontal, remove this line if vertical bars are preferred
+
+# Print the plot
+print(p)
+
+
+```
 Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
