@@ -91,43 +91,89 @@ ggsave("output/radial_plot.pdf")
 
 ```
 
+
+Plot with panels
 ```{r}
 library(ggplot2)
 library(dplyr)
+library(readr)
+library(scales)
 
-# Assuming data is already loaded into 'data'
-# If not, you can create a sample 'data' data frame as follows:
-set.seed(123)  # for reproducibility
-compound <- paste0("Compound", sprintf("%03d", 1:20))
-log2fc <- rnorm(20, mean = 0, sd = 1)  # Log2 Fold Change
-type <- ifelse(log2fc > 0, "up", "down")  # 'up' for positive, 'down' for negative
+# Load the data from the CSV file
+data <- read_csv("/Users/jerry/Micro-Tom_Lso/phytohormones_sigdiff.csv")  # Replace with the actual path to your CSV file
 
-data <- data.frame(
-  Compound = compound,
-  Log2FC = log2fc,
-  Type = type
-)
-
-# Create the bar plot
-p <- ggplot(data, aes(x = Compound, y = Log2FC, fill = Type)) +
+# Create a bar plot
+p <- ggplot(data, aes(x = Index, y = Log2FC, fill = Type)) +
   geom_bar(stat = "identity", position = "identity") +
-  scale_fill_manual(values = c("up" = "red", "down" = "blue")) +
+  geom_text(aes(label = sprintf("%.2f", Log2FC)), vjust = -0.5, size = 3.5, angle = 0, color = "black") +
+  facet_wrap(~ Class, scales = "free_y") +  # Allow individual y-axes
+  scale_fill_manual(values = c("down" = "blue", "up" = "red")) +
+  scale_y_continuous(breaks = pretty_breaks(n = 10)) +  # Add more y-axis ticks
   theme_minimal() +
-   theme(
-    panel.grid.major = element_blank(),  # Remove major grid lines
-    panel.grid.minor = element_blank(),  # Remove minor grid lines
-    panel.background = element_blank(),  # Remove panel background
-    axis.line = element_line(colour = "black"))+
-  labs(
-    x = "Compound",
-    y = "Log2FC",
-    fill = "Type"
+  theme(
+    panel.grid.major = element_line(size = 0.1, linetype = 'solid', color = "grey80"),  # Subtle major grid lines
+    panel.grid.minor = element_line(size = 0.1, linetype = 'solid', color = "grey90"),  # Subtle minor grid lines
+    panel.background = element_blank(),
+    axis.line = element_line(colour = "black"),
+    axis.text.x = element_text(angle = 0, hjust = 1, size = 12),  # Set index text horizontal
+    legend.position = "none",
+    strip.text = element_text(size = 16, face = "bold")
   ) +
-  coord_flip()  # Flip coordinates to make it horizontal, remove this line if vertical bars are preferred
+  labs(x = "Compound", y = "Log2FC")
 
 # Print the plot
 print(p)
 
 
+
 ```
+
+Plot with one giant bargraph
+```{r}
+library(ggplot2)
+library(dplyr)
+library(readr)
+
+
+# Load the data from the CSV file
+data <- read_csv("/Users/jerry/Micro-Tom_Lso/phytohormones_sigdiff.csv")  # Replace with the actual path to your CSV file
+
+# Create the bar plot with aesthetic changes and without separate panels
+p <- ggplot(data, aes(x = Index, y = Log2FC, fill = Type)) +
+  geom_bar(stat = "identity", position = "identity") +
+  scale_fill_manual(values = c("down" = "blue", "up" = "red")) +
+  theme_minimal() +
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    axis.line = element_line(colour = "black"),
+    axis.text.x = element_text(angle = 90, vjust = 0.5),
+    legend.position = "none"
+  ) +
+  labs(x = "Index", y = "Log2FC")
+
+# Determine the unique classes and their middle index for annotations
+class_annotations <- data %>%
+  group_by(Class) %>%
+  summarize(center = median(as.numeric(as.factor(Index))))
+
+# Add a subtle rectangle for each class for visual separation
+class_breaks <- unique(data$Class)
+for (i in seq_along(class_breaks)) {
+  p <- p + annotate("rect", xmin = -Inf, xmax = Inf, 
+                    ymin = ifelse(i == 1, -Inf, class_annotations$center[i-1]), 
+                    ymax = class_annotations$center[i], 
+                    alpha = 0.1, fill = ifelse(i %% 2 == 0, "gray", "white"))
+}
+
+# Add class annotations below the x-axis
+p <- p + geom_text(data = class_annotations, aes(x = center, y = -Inf, label = Class), 
+                   angle = 0, vjust = -1, size = 3, inherit.aes = FALSE)
+
+# Print the plot
+print(p)
+
+```
+
 Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
