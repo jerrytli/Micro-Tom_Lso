@@ -92,7 +92,7 @@ ggsave("output/radial_plot.pdf")
 ```
 
 
-Plot with panels
+Plot with one giant bargraph
 ```{r}
 library(ggplot2)
 library(dplyr)
@@ -100,30 +100,42 @@ library(readr)
 library(scales)
 
 # Load the data from the CSV file
-data <- read_csv("/Users/jerry/Micro-Tom_Lso/phytohormones_sigdiff.csv")  # Replace with the actual path to your CSV file
+data <- read_csv("phytohormones_sigdiff.csv")  # Ensure this path is correct
 
-# Create a bar plot
+# Sort data based on 'Class' and 'Index'
+data <- data %>%
+  mutate(Index = factor(Index, levels = unique(Index))) %>%
+  arrange(Class, Index)
+
+# Ensure Class is factored in the order it appears
+data$Class <- factor(data$Class, levels = unique(data$Class))
+
+# Adjust the plotting code to reflect these changes
 p <- ggplot(data, aes(x = Index, y = Log2FC, fill = Type)) +
   geom_bar(stat = "identity", position = "identity") +
-  geom_text(aes(label = sprintf("%.2f", Log2FC)), vjust = -0.5, size = 3.5, angle = 0, color = "black") +
-  facet_wrap(~ Class, scales = "free_y") +  # Allow individual y-axes
   scale_fill_manual(values = c("down" = "blue", "up" = "red")) +
-  scale_y_continuous(breaks = pretty_breaks(n = 10)) +  # Add more y-axis ticks
   theme_minimal() +
   theme(
-    panel.grid.major = element_line(size = 0.1, linetype = 'solid', color = "grey80"),  # Subtle major grid lines
-    panel.grid.minor = element_line(size = 0.1, linetype = 'solid', color = "grey90"),  # Subtle minor grid lines
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
     panel.background = element_blank(),
     axis.line = element_line(colour = "black"),
-    axis.text.x = element_text(angle = 0, hjust = 1, size = 12),  # Set index text horizontal
+    axis.text.x = element_text(angle = 90, hjust = 1, size = 12),
     legend.position = "none",
     strip.text = element_text(size = 16, face = "bold")
   ) +
-  labs(x = "Compound", y = "Log2FC")
+  labs(x = "Compound", y = "Log2FC") +
+  geom_text(
+    aes(x = Index, y = Log2FC, label = sprintf("%.2f", Log2FC)),
+    vjust = ifelse(data$Log2FC > 0, -0.3, 1.3),
+    color = "black", 
+    size = 3.5, 
+    angle = 0
+  ) +
+  scale_y_continuous(limits = c(-18, max(data$Log2FC, na.rm = TRUE)), breaks = scales::pretty_breaks(n = 10))
 
 # Print the plot
 print(p)
-
 
 
 ```
@@ -134,45 +146,53 @@ library(ggplot2)
 library(dplyr)
 library(readr)
 
+# Assuming "phytohormones_sigdiff.csv" is correctly loaded into `data`
+data <- read_csv("phytohormones_sigdiff.csv")  # Adjust path as necessary
 
-# Load the data from the CSV file
-data <- read_csv("/Users/jerry/Micro-Tom_Lso/phytohormones_sigdiff.csv")  # Replace with the actual path to your CSV file
+# Arrange data by 'Class' and 'Index'
+data <- data %>%
+  arrange(Class, Index) %>%
+  mutate(Index = as.character(Index))  # Convert Index to character for manipulation
 
-# Create the bar plot with aesthetic changes and without separate panels
+# Insert spacers based on class changes
+data <- data %>%
+  group_by(Class) %>%
+  mutate(is_last_in_class = row_number() == n()) %>%
+  ungroup()
+
+# Add spacer rows after the last entry of each class
+spacer_rows <- data %>%
+  filter(is_last_in_class) %>%
+  mutate(Index = paste(Index, "spacer", sep = "_"),
+         Log2FC = NA,  # Assuming Log2FC is what you're plotting
+         Type = NA,  # Set other variables to NA or appropriate defaults
+         is_last_in_class = NA)
+
+# Combine and re-order
+data <- bind_rows(data, spacer_rows) %>%
+  arrange(Class, Index) %>%
+  mutate(Index = factor(Index, levels = unique(Index)))  # Refactor to maintain order
+
+# Plot
 p <- ggplot(data, aes(x = Index, y = Log2FC, fill = Type)) +
-  geom_bar(stat = "identity", position = "identity") +
-  scale_fill_manual(values = c("down" = "blue", "up" = "red")) +
+  geom_bar(stat = "identity", na.rm = TRUE) +
+  scale_fill_manual(values = c("down" = "blue", "up" = "red"), na.translate = FALSE) +
   theme_minimal() +
   theme(
-    panel.grid.major = element_blank(),
-    panel.grid.minor = element_blank(),
+    panel.grid = element_blank(),
     panel.background = element_blank(),
-    axis.line = element_line(colour = "black"),
-    axis.text.x = element_text(angle = 90, vjust = 0.5),
+    axis.line = element_line(color = "black"),
+    axis.text.x = element_text(angle = 90, hjust = 1, size = 12),
     legend.position = "none"
   ) +
-  labs(x = "Index", y = "Log2FC")
-
-# Determine the unique classes and their middle index for annotations
-class_annotations <- data %>%
-  group_by(Class) %>%
-  summarize(center = median(as.numeric(as.factor(Index))))
-
-# Add a subtle rectangle for each class for visual separation
-class_breaks <- unique(data$Class)
-for (i in seq_along(class_breaks)) {
-  p <- p + annotate("rect", xmin = -Inf, xmax = Inf, 
-                    ymin = ifelse(i == 1, -Inf, class_annotations$center[i-1]), 
-                    ymax = class_annotations$center[i], 
-                    alpha = 0.1, fill = ifelse(i %% 2 == 0, "gray", "white"))
-}
-
-# Add class annotations below the x-axis
-p <- p + geom_text(data = class_annotations, aes(x = center, y = -Inf, label = Class), 
-                   angle = 0, vjust = -1, size = 3, inherit.aes = FALSE)
+  labs(x = "Compound", y = "Log2FC") +
+  geom_text(aes(label = ifelse(is.na(Log2FC), "", sprintf("%.2f", Log2FC))), 
+            vjust = 2, size = 5, color = "black", na.rm = TRUE) +
+  scale_y_continuous(breaks = seq(floor(min(data$Log2FC, na.rm = TRUE)), ceiling(max(data$Log2FC, na.rm = TRUE)), by = 5))
 
 # Print the plot
 print(p)
+
 
 ```
 
